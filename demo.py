@@ -1,33 +1,61 @@
-import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-import av
-import mediapipe as mp
 import cv2
+import mediapipe as mp
+import pyautogui
+import time
 
-# Initialize MediaPipe pose detection
+# Mediapipe pose setup
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
 mp_drawing = mp.solutions.drawing_utils
 
-class PoseDetector(VideoProcessorBase):
-    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
-        img = frame.to_ndarray(format="bgr24")
+# Setup webcam
+cap = cv2.VideoCapture(0)
+pyautogui.FAILSAFE = False
 
-        # Process the image and detect pose
-        results = pose.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+# Cooldown to prevent rapid key presses
+cooldown = 1.0
+last_action_time = time.time()
 
-        if results.pose_landmarks:
-            mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+while cap.isOpened():
+    success, image = cap.read()
+    if not success:
+        print("Ignoring empty camera frame.")
+        continue
 
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
+    # Flip image and convert to RGB
+    image = cv2.flip(image, 1)
+    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = pose.process(rgb_image)
 
-# Streamlit App Interface
-st.title("🕺 Real-time Pose Detection with Webcam")
-st.write("This app uses your webcam to detect human pose using MediaPipe + Streamlit WebRTC.")
+    # Draw landmarks
+    if results.pose_landmarks:
+        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-webrtc_streamer(
-    key="pose",
-    video_processor_factory=PoseDetector,
-    media_stream_constraints={"video": True, "audio": False},
-    async_processing=True,
-)
+        # Extract landmarks
+        landmarks = results.pose_landmarks.landmark
+        right_hand = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
+        right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+        right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+
+        now = time.time()
+
+        # Jump: Raise right hand above shoulder
+        if right_hand.y < right_shoulder.y and now - last_action_time > cooldown:
+            pyautogui.press("up")
+            print("Jump")
+            last_action_time = now
+
+        # Slide: Lower right hand below hip
+        elif right_hand.y > right_hip.y and now - last_action_time > cooldown:
+            pyautogui.press("down")
+            print("Slide")
+            last_action_time = now
+
+    # Show webcam
+    cv2.imshow('Pose Controlled Subway Surfer', image)
+
+    if cv2.waitKey(5) & 0xFF == 27:
+        break
+
+cap.release()
+cv2.destroyAllWindows()
