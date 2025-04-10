@@ -1,47 +1,33 @@
 import streamlit as st
-import cv2
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+import av
 import mediapipe as mp
-import time
+import cv2
 
-# Title
-st.title("🕺 Real-time Pose Detection with Webcam")
-st.markdown("This app uses your webcam to detect human pose using MediaPipe.")
-
-# Run/Stop toggle
-run = st.checkbox("Turn ON Camera")
-
-# MediaPipe Pose setup
+# Initialize MediaPipe pose detection
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
 mp_drawing = mp.solutions.drawing_utils
 
-# Webcam feed processing
-FRAME_WINDOW = st.image([])
+class PoseDetector(VideoProcessorBase):
+    def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        img = frame.to_ndarray(format="bgr24")
 
-if run:
-    cap = cv2.VideoCapture(0)  # Use the first webcam
-    st.info("Press the checkbox to turn off the camera.")
-    
-    while run:
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Failed to access webcam.")
-            break
+        # Process the image and detect pose
+        results = pose.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
 
-        # Flip, convert color
-        frame = cv2.flip(frame, 1)
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        # MediaPipe processing
-        results = pose.process(rgb)
-
-        # Draw keypoints
         if results.pose_landmarks:
-            mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            mp_drawing.draw_landmarks(img, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-        FRAME_WINDOW.image(frame, channels="BGR")
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-    cap.release()
-    st.success("Camera turned off.")
-else:
-    st.warning("Turn on the camera using the checkbox above.")
+# Streamlit App Interface
+st.title("🕺 Real-time Pose Detection with Webcam")
+st.write("This app uses your webcam to detect human pose using MediaPipe + Streamlit WebRTC.")
+
+webrtc_streamer(
+    key="pose",
+    video_processor_factory=PoseDetector,
+    media_stream_constraints={"video": True, "audio": False},
+    async_processing=True,
+)
