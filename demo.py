@@ -1,54 +1,47 @@
 import streamlit as st
 import cv2
 import mediapipe as mp
-import numpy as np
+import time
 
-# Initialize MediaPipe
-mp_drawing = mp.solutions.drawing_utils
+# Title
+st.title("🕺 Real-time Pose Detection with Webcam")
+st.markdown("This app uses your webcam to detect human pose using MediaPipe.")
+
+# Run/Stop toggle
+run = st.checkbox("Turn ON Camera")
+
+# MediaPipe Pose setup
 mp_pose = mp.solutions.pose
+pose = mp_pose.Pose()
+mp_drawing = mp.solutions.drawing_utils
 
-st.title("🎮 Motion Control Subway Game (Streamlit Version)")
+# Webcam feed processing
+FRAME_WINDOW = st.image([])
 
-# Use webcam
-cap = cv2.VideoCapture(0)
-stframe = st.empty()
-
-# Movement state
-movement = "Stand"
-
-with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-    while cap.isOpened():
+if run:
+    cap = cv2.VideoCapture(0)  # Use the first webcam
+    st.info("Press the checkbox to turn off the camera.")
+    
+    while run:
         ret, frame = cap.read()
         if not ret:
+            st.error("Failed to access webcam.")
             break
 
-        # Resize and convert for processing
-        image = cv2.cvtColor(cv2.flip(frame, 1), cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
-        results = pose.process(image)
-        image.flags.writeable = True
+        # Flip, convert color
+        frame = cv2.flip(frame, 1)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-        # Extract landmarks
-        try:
-            landmarks = results.pose_landmarks.landmark
-            left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
-            right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST.value]
+        # MediaPipe processing
+        results = pose.process(rgb)
 
-            # Example logic: left-right motion control
-            if left_wrist.x < 0.3:
-                movement = "Left 🏃‍♂️⬅️"
-            elif right_wrist.x > 0.7:
-                movement = "Right 🏃‍♂️➡️"
-            else:
-                movement = "Stand 🧍"
+        # Draw keypoints
+        if results.pose_landmarks:
+            mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
 
-        except:
-            pass
+        FRAME_WINDOW.image(frame, channels="BGR")
 
-        # Draw pose landmarks
-        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
-
-        # Convert back to BGR for OpenCV to show
-        final = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        stframe.image(final, channels="BGR", use_column_width=True)
-        st.write(f"**Movement Detected:** {movement}")
+    cap.release()
+    st.success("Camera turned off.")
+else:
+    st.warning("Turn on the camera using the checkbox above.")
